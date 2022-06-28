@@ -392,3 +392,25 @@ private void Mesh1DBolt(PartData p1, PartData sP, PartData p2)
                 }
             }
         }
+        
+           public double[] AskCaeEdgeParameterAtLocation(NXOpen.CAE.CAEEdge theCurve)
+        {
+            double[] arcCenter = new double[3];
+            double[] startTangent = new double[3];
+            try
+            {
+                double[] startPt = new double[3];
+                double[] endPt = new double[3];
+                double[] endTangent = new double[3];
+                _sessionData.TheUfSession.Sf.EdgeAskEndPoints(theCurve.Tag,startPt,endPt,startTangent,endTangent);
+               
+                arcCenter = startPt;
+            }
+            catch (Exception e)
+            {
+                Log.Error("Error in getting CAE edge data...");
+            }
+            
+
+            return arcCenter;
+        }
