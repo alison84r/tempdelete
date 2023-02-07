@@ -19,9 +19,42 @@ namespace SmoothedOffsetPolyline
             }
         }
 
-        static List<Point> OffsetPolyline(List<Point> polyline, double offset)
+       static List<Point> OffsetPolyline(List<Point> polyline, double offset)
         {
-            // ... Offset polyline code ...
+            List<Point> offsetPolyline = new List<Point>();
+
+            for (int i = 0; i < polyline.Count - 1; i++)
+            {
+                Point p1 = polyline[i];
+                Point p2 = polyline[i + 1];
+
+                double dx = p2.X - p1.X;
+                double dy = p2.Y - p1.Y;
+                double length = Math.Sqrt(dx * dx + dy * dy);
+                double angle = Math.Atan2(dy, dx);
+
+                // Check if the offset direction is outward
+                if (i == 0 || (polyline[i - 1].X - p1.X) * (p2.Y - p1.Y) - (polyline[i - 1].Y - p1.Y) * (p2.X - p1.X) >= 0)
+                {
+                    // Offset the polyline outward
+                    Point offsetPoint1 = new Point(p1.X + offset * Math.Cos(angle + Math.PI / 2), p1.Y + offset * Math.Sin(angle + Math.PI / 2));
+                    Point offsetPoint2 = new Point(p2.X + offset * Math.Cos(angle + Math.PI / 2), p2.Y + offset * Math.Sin(angle + Math.PI / 2));
+
+                    offsetPolyline.Add(offsetPoint1);
+                    offsetPolyline.Add(offsetPoint2);
+                }
+                else
+                {
+                    // Offset the polyline inward
+                    Point offsetPoint1 = new Point(p1.X - offset * Math.Cos(angle + Math.PI / 2), p1.Y - offset * Math.Sin(angle + Math.PI / 2));
+                    Point offsetPoint2 = new Point(p2.X - offset * Math.Cos(angle + Math.PI / 2), p2.Y - offset * Math.Sin(angle + Math.PI / 2));
+
+                    offsetPolyline.Add(offsetPoint1);
+                    offsetPolyline.Add(offsetPoint2);
+                }
+            }
+
+            return offsetPolyline;
         }
 
         static List<Point> SmoothPolyline(List<Point> polyline)
