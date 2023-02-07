@@ -1,416 +1,65 @@
-private void Mesh1DBolt(PartData p1, PartData sP, PartData p2)
+using System;
+using System.Collections.Generic;
+
+namespace SmoothedOffsetPolyline
+{
+    class Program
+    {
+        static void Main(string[] args)
         {
-            List<CAEEdge> p1WasherEdges = new List<CAEEdge>(0);
-            List<CAEEdge> p2WasherEdges = new List<CAEEdge>(0);
-            List<CAEEdge> sPWasherEdges = new List<CAEEdge>(0);
+            List<Point> polyline = new List<Point> { new Point(0, 0), new Point(10, 10), new Point(20, 0), new Point(30, 10), new Point(40, 0) };
+            double offset = 1.5;
 
+            List<Point> offsetPolyline = OffsetPolyline(polyline, offset);
+            List<Point> smoothedPolyline = SmoothPolyline(offsetPolyline);
 
-            Session theSession = _sessionData.TheSession;
-            FemPart workFemPart = ((FemPart)theSession.Parts.BaseWork);
-            BodyCollection bodyCollection = workFemPart.Bodies;
-            Tag[] polybodies;
-            int polygonBodiesCnt;
-            _sessionData.TheUfSession.Sf.AskAllPolygonBodies(out polygonBodiesCnt, out polybodies);
-            foreach (Tag polybody in polybodies)
+            foreach (Point point in smoothedPolyline)
             {
-                CAEBody caeBody = _sessionData.TheSession.GetObjectManager().GetTaggedObject(polybody) as CAEBody;
-                string attributeValue = GetAttribute(caeBody, Constants.PARENT_PART_NO);
-                if (!string.IsNullOrEmpty(attributeValue))
-                {
-                    //p1CaeEdge
-                    if (attributeValue.Equals(p1.PartNumber + "_" + p1.PartId))
-                    {
-                        int numCaeEdges;
-                        Tag[] caeEdges;
-                        _sessionData.TheUfSession.Sf.BodyAskEdges(caeBody.Tag, out numCaeEdges, out caeEdges);
-                        if (numCaeEdges > 0)
-                        {
-                            foreach (Tag caeEdgeTag in caeEdges)
-                            {
-                                CAEEdge caeEdge = _sessionData.TheSession.GetObjectManager().
-                                    GetTaggedObject(caeEdgeTag) as CAEEdge;
-                                if (caeEdge.Name.Contains("WASHER_EDGE"))
-                                {
-                                    p1WasherEdges.Add(caeEdge);
-                                }
-                            }
-                        }
-                    }
-
-                    //p2
-                    if (attributeValue.Equals(p2.PartNumber + "_" + p2.PartId))
-                    {
-                        int numCaeEdges;
-                        Tag[] caeEdges;
-                        _sessionData.TheUfSession.Sf.BodyAskEdges(caeBody.Tag, out numCaeEdges, out caeEdges);
-                        if (numCaeEdges > 0)
-                        {
-                            foreach (Tag caeEdgeTag in caeEdges)
-                            {
-                                CAEEdge caeEdge = _sessionData.TheSession.GetObjectManager().GetTaggedObject(caeEdgeTag) as CAEEdge;
-                                if (caeEdge.Name.Contains("WASHER_EDGE"))
-                                {
-                                    p2WasherEdges.Add(caeEdge);
-                                }
-                            }
-                        }
-                    }
-
-                    if (attributeValue.Equals(sP.PartNumber + "_" + sP.PartId))
-                    {
-                        int numCaeEdges;
-                        Tag[] caeEdges;
-                        _sessionData.TheUfSession.Sf.BodyAskEdges(caeBody.Tag, out numCaeEdges, out caeEdges);
-                        if (numCaeEdges > 0)
-                        {
-                            foreach (Tag caeEdgeTag in caeEdges)
-                            {
-                                CAEEdge caeEdge = _sessionData.TheSession.GetObjectManager().GetTaggedObject(caeEdgeTag) as CAEEdge;
-                                if (caeEdge.Name.Contains("WASHER_EDGE"))
-                                {
-                                    sPWasherEdges.Add(caeEdge);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            List<CAEEdge> allWasherEdges = p1WasherEdges.Concat(p2WasherEdges).Concat(sPWasherEdges).ToList();
-            foreach (HoleData holeData in sP.HolesData)
-            {
-                List<CAEEdge> caEEdges = new List<CAEEdge>(0);
-                if (holeData.MatingHoles.Any())
-                {
-                    foreach (CAEEdge washerEdge in p1WasherEdges)
-                    {
-                        double[] centerSp = AskCaeEdgeParameterAtLocation(washerEdge);
-                        bool pointIsInAabb = Operation.PointIsInAabb(centerSp[0], centerSp[1], centerSp[2],
-                            holeData.OverAllAaBbBox);
-                        if (pointIsInAabb)
-                        {
-                            caEEdges.Add(washerEdge);
-                            break;
-                        }
-                    }
-                    foreach (CAEEdge washerEdge in p2WasherEdges)
-                    {
-                        double[] centerSp = AskCaeEdgeParameterAtLocation(washerEdge);
-                        bool pointIsInAabb = Operation.PointIsInAabb(centerSp[0], centerSp[1], centerSp[2],
-                            holeData.OverAllAaBbBox);
-                        if (pointIsInAabb)
-                        {
-                            caEEdges.Add(washerEdge);
-                            break;
-                        }
-                    }
-                    foreach (CAEEdge washerEdge in sPWasherEdges)
-                    {
-                        double[] centerSp = AskCaeEdgeParameterAtLocation(washerEdge);
-                        bool pointIsInAabb = Operation.PointIsInAabb(centerSp[0], centerSp[1], centerSp[2],
-                            holeData.OverAllAaBbBox);
-                        if (pointIsInAabb)
-                        {
-                            caEEdges.Add(washerEdge);
-                            break;
-                        }
-                    }
-
-                    if (caEEdges.Any() && caEEdges.Count == 3)
-                    {
-                        try
-                        {
-                            BaseFEModel feModel = workFemPart.BaseFEModel;
-                            BoltBuilder boltBuilder1 = feModel.Bolts.CreateBoltBuilder(null);
-                            MeshCollector meshCollector1;
-                            meshCollector1 = boltBuilder1.SpiderElementType.DestinationCollector.ElementContainer;
-                            boltBuilder1.ShankElementType.DestinationCollector.ElementContainer = meshCollector1;
-                            boltBuilder1.SpiderElementType.DestinationCollector.ElementContainer = meshCollector1;
-
-                            boltBuilder1.HeadSpiderScale = 120.0;
-                            boltBuilder1.NutSpiderScale = 120.0;
-                            boltBuilder1.JunctionSpiderScale = 120.0;
-                            boltBuilder1.Junction1SpiderScale = 120.0;
-                            boltBuilder1.Junction2SpiderScale = 120.0;
-
-                            boltBuilder1.ShankElementType.ElementDimension = ElementTypeBuilder.ElementType.Beam;
-                            boltBuilder1.ShankElementType.DestinationCollector.ElementContainer = null;
-
-                            boltBuilder1.SpiderElementType.ElementDimension = ElementTypeBuilder.ElementType.Spider;
-                            boltBuilder1.SpiderElementType.DestinationCollector.ElementContainer = null;
-
-                            boltBuilder1.Junction = true;
-                            boltBuilder1.ShankElementType.ElementTypeName = "RBE2";
-                            boltBuilder1.SpiderElementType.ElementTypeName = "RBE2";
-                            boltBuilder1.Midnode = true;
-
-                            
-
-                            TaggedObject[] objects1 = new TaggedObject[1];
-                            objects1[0] = caEEdges[0];
-                            
-                            bool added1;
-                            added1 = boltBuilder1.HeadEdge.Add(objects1);
-
-                            TaggedObject[] objects2 = new TaggedObject[1];
-                            objects2[0] = caEEdges[1];
-                            bool added2;
-                            added2 = boltBuilder1.NutEdge.Add(objects2);
-
-                            TaggedObject[] objects3 = new TaggedObject[1];
-                            objects3[0] = caEEdges[2];
-                            bool added3;
-                            added3 = boltBuilder1.JunctionEdge.Add(objects3);
-
-                            boltBuilder1.Junction = true;
-                            boltBuilder1.OperationType = BoltBuilder.BoltOperation.BoltNut;
-                            boltBuilder1.SpiderElementType.ElementDimension = ElementTypeBuilder.ElementType.Spider;
-                            boltBuilder1.SpiderElementType.ElementTypeName = "RBE2";
-
-                            DestinationCollectorBuilder destinationCollectorBuilder1 = boltBuilder1.ShankElementType.DestinationCollector;
-                            destinationCollectorBuilder1.ElementContainer = null;
-                            destinationCollectorBuilder1.AutomaticMode = true;
-
-
-
-                            DestinationCollectorBuilder destinationCollectorBuilder2 = boltBuilder1.SpiderElementType.DestinationCollector;
-                            destinationCollectorBuilder2.ElementContainer = null;
-                            destinationCollectorBuilder2.AutomaticMode = true;
-
-
-
-                            //Point point1;
-                            //point1 = workFemPart.Points.CreatePoint(cAEEdge1, SmartObject.UpdateOption.AfterModeling);
-                            //point1.SetVisibility(SmartObject.VisibilityOption.Visible);
-
-                            //Point point2;
-                            //point2 = workFemPart.Points.CreatePoint(cAEEdge2, SmartObject.UpdateOption.AfterModeling);
-                            //point2.SetVisibility(SmartObject.VisibilityOption.Visible);
-
-                            //Point point3;
-                            //point3 = workFemPart.Points.CreatePoint(cAEEdge3, SmartObject.UpdateOption.AfterModeling);
-                            //point3.SetVisibility(SmartObject.VisibilityOption.Visible);
-
-
-
-                            Bolt bolt1;
-                            bolt1 = boltBuilder1.CommitBolt();
-
-                            //theSession.SetUndoMarkName(markId1, "Bolt Connection");
-                            boltBuilder1.Destroy();
-                            theSession.CleanUpFacetedFacesAndEdges();
-                        }
-                        catch (Exception e)
-                        {
-                            Log.Error("Error in creating 1D mesh");
-                        }
-                    }
-                }
+                Console.WriteLine("(" + point.X + ", " + point.Y + ")");
             }
         }
-        private void Mesh1DBolt(PartData p1, PartData p2)
+
+        static List<Point> OffsetPolyline(List<Point> polyline, double offset)
         {
-            List<CAEEdge> p1WasherEdges = new List<CAEEdge>(0);
-            List<CAEEdge> p2WasherEdges = new List<CAEEdge>(0);
-            List<CAEEdge> sPWasherEdges = new List<CAEEdge>(0);
+            // ... Offset polyline code ...
+        }
 
+        static List<Point> SmoothPolyline(List<Point> polyline)
+        {
+            int n = polyline.Count;
+            List<Point> smoothedPolyline = new List<Point>();
 
-            Session theSession = _sessionData.TheSession;
-            FemPart workFemPart = ((FemPart)theSession.Parts.BaseWork);
-            BodyCollection bodyCollection = workFemPart.Bodies;
-            Tag[] polybodies;
-            int polygonBodiesCnt;
-            _sessionData.TheUfSession.Sf.AskAllPolygonBodies(out polygonBodiesCnt, out polybodies);
-            foreach (Tag polybody in polybodies)
+            for (int i = 0; i < n; i++)
             {
-                CAEBody caeBody = _sessionData.TheSession.GetObjectManager().GetTaggedObject(polybody) as CAEBody;
-                string attributeValue = GetAttribute(caeBody, Constants.PARENT_PART_NO);
-                if (!string.IsNullOrEmpty(attributeValue))
+                Point p0 = polyline[WrapIndex(i - 1, n)];
+                Point p1 = polyline[i];
+                Point p2 = polyline[WrapIndex(i + 1, n)];
+                Point p3 = polyline[WrapIndex(i + 2, n)];
+
+                for (double t = 0; t <= 1; t += 0.01)
                 {
-                    //p1CaeEdge
-                    if (attributeValue.Equals(p1.PartNumber + "_" + p1.PartId))
-                    {
-                        int numCaeEdges;
-                        Tag[] caeEdges;
-                        _sessionData.TheUfSession.Sf.BodyAskEdges(caeBody.Tag, out numCaeEdges, out caeEdges);
-                        if (numCaeEdges > 0)
-                        {
-                            foreach (Tag caeEdgeTag in caeEdges)
-                            {
-                                CAEEdge caeEdge = _sessionData.TheSession.GetObjectManager().
-                                    GetTaggedObject(caeEdgeTag) as CAEEdge;
-                                if (caeEdge.Name.Contains("WASHER_EDGE"))
-                                {
-                                    p1WasherEdges.Add(caeEdge);
-                                }
-                            }
-                        }
-                    }
-
-                    //p2
-                    if (attributeValue.Equals(p2.PartNumber + "_" + p2.PartId))
-                    {
-                        int numCaeEdges;
-                        Tag[] caeEdges;
-                        _sessionData.TheUfSession.Sf.BodyAskEdges(caeBody.Tag, out numCaeEdges, out caeEdges);
-                        if (numCaeEdges > 0)
-                        {
-                            foreach (Tag caeEdgeTag in caeEdges)
-                            {
-                                CAEEdge caeEdge = _sessionData.TheSession.GetObjectManager().GetTaggedObject(caeEdgeTag) as CAEEdge;
-                                if (caeEdge.Name.Contains("WASHER_EDGE"))
-                                {
-                                    p2WasherEdges.Add(caeEdge);
-                                }
-                            }
-                        }
-                    }
-
-                   
+                    double x = CatmullRom(t, p0.X, p1.X, p2.X, p3.X);
+                    double y = CatmullRom(t, p0.Y, p1.Y, p2.Y, p3.Y);
+                    smoothedPolyline.Add(new Point(x, y));
                 }
             }
 
-            List<CAEEdge> allWasherEdges = p1WasherEdges.Concat(p2WasherEdges).Concat(sPWasherEdges).ToList();
-            foreach (HoleData holeData in p1.HolesData)
-            {
-                List<CAEEdge> caEEdges = new List<CAEEdge>(0);
-                if (holeData.MatingHoles.Any())
-                {
-                    foreach (CAEEdge washerEdge in p1WasherEdges)
-                    {
-                        double[] centerSp = AskCaeEdgeParameterAtLocation(washerEdge);
-                        bool pointIsInAabb = Operation.PointIsInAabb(centerSp[0], centerSp[1], centerSp[2],
-                            holeData.OverAllAaBbBox);
-                        if (pointIsInAabb)
-                        {
-                            caEEdges.Add(washerEdge);
-                            break;
-                        }
-                    }
-                    foreach (CAEEdge washerEdge in p2WasherEdges)
-                    {
-                        double[] centerSp = AskCaeEdgeParameterAtLocation(washerEdge);
-                        bool pointIsInAabb = Operation.PointIsInAabb(centerSp[0], centerSp[1], centerSp[2],
-                            holeData.OverAllAaBbBox);
-                        if (pointIsInAabb)
-                        {
-                            caEEdges.Add(washerEdge);
-                            break;
-                        }
-                    }
-                   
-
-                    if (caEEdges.Any() && caEEdges.Count == 2)
-                    {
-                        try
-                        {
-                            BaseFEModel feModel = workFemPart.BaseFEModel;
-                            BoltBuilder boltBuilder1 = feModel.Bolts.CreateBoltBuilder(null);
-                            MeshCollector meshCollector1;
-                            meshCollector1 = boltBuilder1.SpiderElementType.DestinationCollector.ElementContainer;
-                            boltBuilder1.ShankElementType.DestinationCollector.ElementContainer = meshCollector1;
-                            boltBuilder1.SpiderElementType.DestinationCollector.ElementContainer = meshCollector1;
-
-                            boltBuilder1.HeadSpiderScale = 120.0;
-                            boltBuilder1.NutSpiderScale = 120.0;
-                            boltBuilder1.JunctionSpiderScale = 120.0;
-                            boltBuilder1.Junction1SpiderScale = 120.0;
-                            boltBuilder1.Junction2SpiderScale = 120.0;
-
-                            boltBuilder1.ShankElementType.ElementDimension = ElementTypeBuilder.ElementType.Beam;
-                            boltBuilder1.ShankElementType.DestinationCollector.ElementContainer = null;
-
-                            boltBuilder1.SpiderElementType.ElementDimension = ElementTypeBuilder.ElementType.Spider;
-                            boltBuilder1.SpiderElementType.DestinationCollector.ElementContainer = null;
-
-                            boltBuilder1.Junction = true;
-                            boltBuilder1.ShankElementType.ElementTypeName = "RBE2";
-                            boltBuilder1.SpiderElementType.ElementTypeName = "RBE2";
-                            boltBuilder1.Midnode = true;
-
-
-
-                            TaggedObject[] objects1 = new TaggedObject[1];
-                            objects1[0] = caEEdges[0];
-
-                            bool added1;
-                            added1 = boltBuilder1.HeadEdge.Add(objects1);
-
-                            TaggedObject[] objects2 = new TaggedObject[1];
-                            objects2[0] = caEEdges[1];
-                            bool added2;
-                            added2 = boltBuilder1.NutEdge.Add(objects2);
-
-                            //TaggedObject[] objects3 = new TaggedObject[1];
-                            //objects3[0] = caEEdges[2];
-                            //bool added3;
-                            //added3 = boltBuilder1.JunctionEdge.Add(objects3);
-
-                            boltBuilder1.Junction = false;
-                            boltBuilder1.OperationType = BoltBuilder.BoltOperation.BoltNut;
-                            boltBuilder1.SpiderElementType.ElementDimension = ElementTypeBuilder.ElementType.Spider;
-                            boltBuilder1.SpiderElementType.ElementTypeName = "RBE2";
-
-                            DestinationCollectorBuilder destinationCollectorBuilder1 = boltBuilder1.ShankElementType.DestinationCollector;
-                            destinationCollectorBuilder1.ElementContainer = null;
-                            destinationCollectorBuilder1.AutomaticMode = true;
-
-
-
-                            DestinationCollectorBuilder destinationCollectorBuilder2 = boltBuilder1.SpiderElementType.DestinationCollector;
-                            destinationCollectorBuilder2.ElementContainer = null;
-                            destinationCollectorBuilder2.AutomaticMode = true;
-
-
-
-                            //Point point1;
-                            //point1 = workFemPart.Points.CreatePoint(cAEEdge1, SmartObject.UpdateOption.AfterModeling);
-                            //point1.SetVisibility(SmartObject.VisibilityOption.Visible);
-
-                            //Point point2;
-                            //point2 = workFemPart.Points.CreatePoint(cAEEdge2, SmartObject.UpdateOption.AfterModeling);
-                            //point2.SetVisibility(SmartObject.VisibilityOption.Visible);
-
-                            //Point point3;
-                            //point3 = workFemPart.Points.CreatePoint(cAEEdge3, SmartObject.UpdateOption.AfterModeling);
-                            //point3.SetVisibility(SmartObject.VisibilityOption.Visible);
-
-
-
-                            Bolt bolt1;
-                            bolt1 = boltBuilder1.CommitBolt();
-
-                            //theSession.SetUndoMarkName(markId1, "Bolt Connection");
-                            boltBuilder1.Destroy();
-                            theSession.CleanUpFacetedFacesAndEdges();
-                        }
-                        catch (Exception e)
-                        {
-                            Log.Error("Error in creating 1D mesh");
-                        }
-                    }
-                }
-            }
+            return smoothedPolyline;
         }
-        
-           public double[] AskCaeEdgeParameterAtLocation(NXOpen.CAE.CAEEdge theCurve)
+
+        static int WrapIndex(int i, int n)
         {
-            double[] arcCenter = new double[3];
-            double[] startTangent = new double[3];
-            try
-            {
-                double[] startPt = new double[3];
-                double[] endPt = new double[3];
-                double[] endTangent = new double[3];
-                _sessionData.TheUfSession.Sf.EdgeAskEndPoints(theCurve.Tag,startPt,endPt,startTangent,endTangent);
-               
-                arcCenter = startPt;
-            }
-            catch (Exception e)
-            {
-                Log.Error("Error in getting CAE edge data...");
-            }
-            
-
-            return arcCenter;
+            return (i + n) % n;
         }
+
+        static double CatmullRom(double t, double p0, double p1, double p2, double p3)
+        {
+            return 0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (p3 - 3 * p2 + 3 * p1 - p0) * t * t * t);
+        }
+    }
+
+    class Point
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+
