@@ -1,0 +1,44 @@
+static Face[] GetClosestFaces_by_ug_body_askFaceClosestToPoint(Body theBody, Point3d onBody)
+    {
+        string bodyHostPointer = workPart.RuleManager.GetReferenceText(theBody);
+
+        string rule = "ug_body_askFaceClosestToPoint(" + bodyHostPointer + ", " +
+            "Point(" + onBody.X + "," + onBody.Y + "," + onBody.Z + "))";
+
+        string ruleName;
+        theUFSession.Cfi.GetUniqueFilename(out ruleName);
+        workPart.RuleManager.CreateDynamicRule("root:", ruleName, "List", rule, "");
+
+        System.Collections.ArrayList closeFaces = new System.Collections.ArrayList();
+
+        string version;
+        theUFSession.UF.GetRelease(out version);
+
+        if (double.Parse(version.Substring(4)) > 8)  // See PR 6753588
+        {
+            Object[] list = (Object[])workPart.RuleManager.Evaluate(ruleName + ":");
+            foreach (Object anObject in list) closeFaces.Add(anObject);
+        }
+        else
+        {
+            IntPtr value;
+            theUFSession.Kf.EvaluateRule("root:" + ruleName + ":", out value);
+            IntPtr list;
+            theUFSession.Kf.AskList(value, out list);
+            Int32 cnt;
+            theUFSession.Kf.AskListCount(value, out cnt);
+            Tag aTag;
+
+            for (int ii = 1; ii <= cnt; ii++)
+            {
+                theUFSession.Kf.AskListItem(list, ii, out value);
+                theUFSession.Kf.AskTag(value, out aTag);
+                Face theFace = (Face)NXOpen.Utilities.NXObjectManager.Get(aTag);
+                closeFaces.Add(theFace);
+            }
+        }
+
+        workPart.RuleManager.DeleteDynamicRule("root:", ruleName);
+
+        return (Face[])closeFaces.ToArray(typeof(Face));
+    }
