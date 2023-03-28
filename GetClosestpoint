@@ -51,3 +51,299 @@ Sub Main (ByVal args() As String)
         
 End Sub
 End Module
+
+
+==========================================================================================================================================================
+using System;
+using NXOpen;
+using NXOpen.UF;
+
+public class NXJournal
+{
+    static Session theSession = Session.GetSession();
+    static UFSession theUFSession = UFSession.GetUFSession();
+    static Part workPart = theSession.Parts.Work;
+
+    public static void Main(string[] args)
+    {
+        Point thePoint = null;
+        Body theBody = null;
+
+        if (workPart.Points.ToArray().Length > 1)
+        {
+            thePoint = SelectExistingPoint("Find face(s) closest to");
+            if (thePoint == null) return;
+        }
+        else
+        {
+            thePoint = workPart.Points.ToArray()[0];
+        }
+
+        thePoint.Highlight();
+
+        if (workPart.Bodies.ToArray().Length > 1)
+        {
+            theBody = SelectABody("Find face(s) closest to");
+            if (theBody == null) return;
+        }
+        else
+        {
+            theBody = workPart.Bodies.ToArray()[0];
+        }
+
+    // First find the point that is ON the body
+        Point3d point1;
+        Point3d onBody;
+        double accuracy;
+        double minDist = theSession.Measurement.GetMinimumDistance(thePoint, theBody,
+            out point1, out onBody, out accuracy);
+
+        short theTimer = 0;
+        TimerValues theTimes;
+
+        theUFSession.UF.BeginTimer(out theTimer);
+        Face[] closeFaces0 = GetClosestFaces_by_NewDistance(thePoint, theBody, minDist);
+        theUFSession.UF.EndTimer(theTimer, out theTimes);
+        Echo("NewDistance found " + closeFaces0.Length + " faces in "
+            + theTimes.real_time.ToString("F3") + " seconds");
+
+        theUFSession.UF.BeginTimer(out theTimer);
+        Face[] closeFaces1 = GetClosestFaces_by_GetMinimumDistance(theBody, onBody);
+        theUFSession.UF.EndTimer(theTimer, out theTimes);
+        Echo("GetMinimumDistance found " + closeFaces1.Length + " faces in " 
+            + theTimes.real_time.ToString("F3") + " seconds");
+
+        theUFSession.UF.BeginTimer(out theTimer);
+        Face[] closeFaces2 = GetClosestFaces_by_AskPointContainment(theBody, onBody);
+        theUFSession.UF.EndTimer(theTimer, out theTimes);
+        Echo("AskPointContainment found " + closeFaces2.Length + " faces in " 
+            + theTimes.real_time.ToString("F3") + " seconds");
+
+        theUFSession.UF.BeginTimer(out theTimer);
+        Face[] closeFaces3 = GetClosestFaces_by_AskBoundingBox(theBody, onBody);
+        theUFSession.UF.EndTimer(theTimer, out theTimes);
+        Echo("AskBoundingBox found " + closeFaces3.Length + " faces in "
+            + theTimes.real_time.ToString("F3") + " seconds");
+
+        if (minDist > 0)
+        {
+            double[] one = { point1.X, point1.Y, point1.Z };
+            double[] two = { onBody.X, onBody.Y, onBody.Z };
+
+            double[] ray = new double[3];
+            theUFSession.Vec3.Sub(one, two, ray);
+
+            Vector3d rayDirection = new Vector3d(ray[0], ray[1], ray[2]);
+
+            theUFSession.UF.BeginTimer(out theTimer);
+            Face closeFace4 = GetClosestFace_by_TraceARay(theBody, onBody, rayDirection);
+            theUFSession.UF.EndTimer(theTimer, out theTimes);
+            Echo("TraceARay found " + closeFace4.ToString() + " in "
+                    + theTimes.real_time.ToString("F3") + " seconds");
+        }
+        else
+            Echo("TraceARay Skipped - point is on the body, could not compute ray direction");
+      
+        theUFSession.UF.BeginTimer(out theTimer);
+        Face[] closeFaces5 = GetClosestFaces_by_ug_body_askFaceClosestToPoint(theBody, onBody);
+        theUFSession.UF.EndTimer(theTimer, out theTimes);
+        Echo("ug_body_askFaceClosestToPoint found " + closeFaces5.Length + " faces in "
+            + theTimes.real_time.ToString("F3") + " seconds");        
+    }
+
+    static Face[] GetClosestFaces_by_NewDistance(Point thePoint, Body theBody, double minDist)
+    {
+        System.Collections.ArrayList closeFaces = new System.Collections.ArrayList();
+
+        double tol = workPart.Preferences.Modeling.DistanceToleranceData;
+
+        foreach (Face theFace in theBody.GetFaces())
+        {
+            MeasureDistance faceToBody = workPart.MeasureManager.NewDistance(
+                null, MeasureManager.MeasureType.Minimum, thePoint, theFace);
+
+            if (Math.Abs(faceToBody.Value - minDist) < tol)
+                closeFaces.Add(theFace);
+        }
+
+        return (Face[])closeFaces.ToArray(typeof(Face));
+    }
+
+    static Face[] GetClosestFaces_by_GetMinimumDistance(Body theBody, Point3d onBody)
+    {
+        System.Collections.ArrayList closeFaces = new System.Collections.ArrayList();
+
+        Face[] theFaces = theBody.GetFaces();
+
+        Point3d point1;
+        Point3d point2;
+        double accuracy;
+        double tol = workPart.Preferences.Modeling.DistanceToleranceData;
+
+    // find the faces on the body that are within the modeling tolerance of the
+    // given point which is already on the body
+        foreach (Face theFace in theBody.GetFaces())
+        {
+            double distance = theSession.Measurement.GetMinimumDistance(theFace, null, 
+                onBody, out point1, out point2, out accuracy);
+            if (distance < tol)
+                closeFaces.Add(theFace);
+        }
+
+        return (Face[])closeFaces.ToArray(typeof(Face));
+    }
+     
+    static Face[] GetClosestFaces_by_AskPointContainment(Body theBody, Point3d PointOnBody)
+    {
+        double[] onBody = { PointOnBody.X, PointOnBody.Y, PointOnBody.Z };
+
+        System.Collections.ArrayList closeFaces = new System.Collections.ArrayList();
+
+    //  Find the faces on the body which the given point is on
+        foreach (Face theFace in theBody.GetFaces())
+        {
+            int pt_status;
+            theUFSession.Modl.AskPointContainment(onBody, theFace.Tag, out pt_status);
+            if (pt_status != 2) closeFaces.Add(theFace);
+        }
+
+        return (Face[])closeFaces.ToArray(typeof(Face));
+    }
+    
+    static Face[] GetClosestFaces_by_AskBoundingBox(Body theBody, Point3d onBody)
+    {
+        double[] loc = { onBody.X, onBody.Y, onBody.Z };
+
+        System.Collections.ArrayList candidateFaces = new System.Collections.ArrayList();
+
+    //  Find the faces on the body whose bounding box contains the point on the body
+        foreach (Face theFace in theBody.GetFaces())
+        {
+            double[] minMax = new double[6];
+            theUFSession.Modl.AskBoundingBox(theFace.Tag, minMax);
+            if ((minMax[0] <= loc[0]) && (loc[0] <= minMax[3]) &&
+                (minMax[1] <= loc[1]) && (loc[1] <= minMax[4]) &&
+                (minMax[2] <= loc[2]) && (loc[2] <= minMax[5]))
+                candidateFaces.Add(theFace);
+        }
+
+        System.Collections.ArrayList closeFaces = new System.Collections.ArrayList();
+
+    //  make sure the point really is on faces that were found
+    //  in case there are overlapping bounding boxes
+        foreach (Face theFace in candidateFaces)
+        {
+            int pt_status;
+            theUFSession.Modl.AskPointContainment(loc, theFace.Tag, out pt_status);
+            if (pt_status != 2) closeFaces.Add(theFace);
+        }
+
+        return (Face[])closeFaces.ToArray(typeof(Face));
+    }
+
+    static Face GetClosestFace_by_TraceARay(Body theBody, Point3d onBody, Vector3d rayDirection)
+    {
+        double[] from = { onBody.X, onBody.Y, onBody.Z };
+        double[] ray = { rayDirection.X, rayDirection.Y, rayDirection.Z };
+        double[] identity = new double[16];
+        theUFSession.Mtx4.Identity(identity);
+        int num_results;
+        UFModl.RayHitPointInfo[] hits;
+
+        theUFSession.Modl.TraceARay(1, new Tag[] { theBody.Tag }, from, ray,
+            identity, 1, out num_results, out hits);
+
+        return (Face)NXOpen.Utilities.NXObjectManager.Get(hits[0].hit_face);
+    }
+
+    static Face[] GetClosestFaces_by_ug_body_askFaceClosestToPoint(Body theBody, Point3d onBody)
+    {
+        string bodyHostPointer = workPart.RuleManager.GetReferenceText(theBody);
+
+        string rule = "ug_body_askFaceClosestToPoint(" + bodyHostPointer + ", " +
+            "Point(" + onBody.X + "," + onBody.Y + "," + onBody.Z + "))";
+
+        string ruleName;
+        theUFSession.Cfi.GetUniqueFilename(out ruleName);
+        workPart.RuleManager.CreateDynamicRule("root:", ruleName, "List", rule, "");
+
+        System.Collections.ArrayList closeFaces = new System.Collections.ArrayList();
+
+        string version;
+        theUFSession.UF.GetRelease(out version);
+
+        if (double.Parse(version.Substring(4)) > 8)  // See PR 6753588
+        {
+            Object[] list = (Object[])workPart.RuleManager.Evaluate(ruleName + ":");
+            foreach (Object anObject in list) closeFaces.Add(anObject);
+        }
+        else
+        {
+            IntPtr value;
+            theUFSession.Kf.EvaluateRule("root:" + ruleName + ":", out value);
+            IntPtr list;
+            theUFSession.Kf.AskList(value, out list);
+            Int32 cnt;
+            theUFSession.Kf.AskListCount(value, out cnt);
+            Tag aTag;
+
+            for (int ii = 1; ii <= cnt; ii++)
+            {
+                theUFSession.Kf.AskListItem(list, ii, out value);
+                theUFSession.Kf.AskTag(value, out aTag);
+                Face theFace = (Face)NXOpen.Utilities.NXObjectManager.Get(aTag);
+                closeFaces.Add(theFace);
+            }
+        }
+
+        workPart.RuleManager.DeleteDynamicRule("root:", ruleName);
+
+        return (Face[])closeFaces.ToArray(typeof(Face));
+    }
+
+    static void Echo(string output)
+    {
+        theSession.ListingWindow.Open();
+        theSession.ListingWindow.WriteLine(output);
+        theUFSession.Ui.UpdateListingWindow();
+        theSession.LogFile.WriteLine(output);
+    }
+
+    public static Point SelectExistingPoint(string prompt)
+    {
+        theUFSession.Ui.SetCursorView(0);
+
+        TaggedObject selobj = null;
+        Point3d cursor = default(Point3d);
+        Selection.MaskTriple[] mask = { new 
+            Selection.MaskTriple(NXOpen.UF.UFConstants.UF_point_type, 0, 0)};
+
+        Selection.Response resp =
+            UI.GetUI().SelectionManager.SelectTaggedObject(prompt,
+            "Select an Existing Point",
+            Selection.SelectionScope.WorkPart,
+            Selection.SelectionAction.ClearAndEnableSpecific,
+            false, false, mask, out selobj, out cursor);
+
+        return (Point)selobj;
+    }
+
+    public static Body SelectABody(string prompt)
+    {
+        TaggedObject selobj = null;
+        Point3d cursor = default(Point3d);
+        Selection.MaskTriple[] bodies = { new Selection.MaskTriple(UFConstants.UF_solid_type, 0, UFConstants.UF_UI_SEL_FEATURE_BODY) };
+
+        Selection.Response resp = UI.GetUI().SelectionManager.SelectTaggedObject(prompt, "Select a body",
+            Selection.SelectionScope.WorkPart, Selection.SelectionAction.EnableSpecific, false,
+            false, bodies, out selobj, out cursor);
+
+        return (Body)selobj;
+    }
+
+
+    public static int GetUnloadOption(string arg)
+    {
+        return System.Convert.ToInt32(Session.LibraryUnloadOption.Immediately);
+    }
+}
