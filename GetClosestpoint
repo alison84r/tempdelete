@@ -1,44 +1,53 @@
-static Face[] GetClosestFaces_by_ug_body_askFaceClosestToPoint(Body theBody, Point3d onBody)
-    {
-        string bodyHostPointer = workPart.RuleManager.GetReferenceText(theBody);
+Imports System
+Imports NXOpen
+Imports NXOpen.UF
 
-        string rule = "ug_body_askFaceClosestToPoint(" + bodyHostPointer + ", " +
-            "Point(" + onBody.X + "," + onBody.Y + "," + onBody.Z + "))";
+Module FacePointSelection
+Sub Main (ByVal args() As String)
 
-        string ruleName;
-        theUFSession.Cfi.GetUniqueFilename(out ruleName);
-        workPart.RuleManager.CreateDynamicRule("root:", ruleName, "List", rule, "");
+    Dim theSession As Session = Session.GetSession()
+    Dim theUfSession As UFSession = UFSession.GetUFSession()
+    Dim theUI As UI = UI.GetUI()
+    Dim theLW As ListingWindow = theSession.ListingWindow
+    Dim pointTag As NXOpen.Tag
+    Dim basePoint(2) As Double
+    Dim response As Integer
 
-        System.Collections.ArrayList closeFaces = new System.Collections.ArrayList();
+    theUfSession.Ui.LockUgAccess(NXOpen.UF.UFConstants.UF_UI_FROM_CUSTOM)
+    theUfSession.Ui.PointConstruct("Select Point on Face", UFUi.PointBaseMethod.PointOnSurfacePt, pointTag, basePoint, response)
+    theUfSession.Ui.UnlockUgAccess(NXOpen.UF.UFConstants.UF_UI_FROM_CUSTOM)
+    If response <> UFConstants.UF_UI_OK Then Return
+    
+    Dim pointObj As NXOpen.Point =  CType(Utilities.NXObjectManager.Get(pointTag), NXOpen.Point)
 
-        string version;
-        theUFSession.UF.GetRelease(out version);
+    Dim n_parents As Integer
+    Dim parents() As Tag = Nothing
+    Dim type, subtype As Integer
 
-        if (double.Parse(version.Substring(4)) > 8)  // See PR 6753588
-        {
-            Object[] list = (Object[])workPart.RuleManager.Evaluate(ruleName + ":");
-            foreach (Object anObject in list) closeFaces.Add(anObject);
-        }
-        else
-        {
-            IntPtr value;
-            theUFSession.Kf.EvaluateRule("root:" + ruleName + ":", out value);
-            IntPtr list;
-            theUFSession.Kf.AskList(value, out list);
-            Int32 cnt;
-            theUFSession.Kf.AskListCount(value, out cnt);
-            Tag aTag;
+    theUFSession.So.AskParents(pointTag, UFConstants.UF_SO_ASK_ALL_PARENTS, n_parents, parents)
+    theLW.Open()
 
-            for (int ii = 1; ii <= cnt; ii++)
-            {
-                theUFSession.Kf.AskListItem(list, ii, out value);
-                theUFSession.Kf.AskTag(value, out aTag);
-                Face theFace = (Face)NXOpen.Utilities.NXObjectManager.Get(aTag);
-                closeFaces.Add(theFace);
-            }
-        }
+    For ii As Integer = 0 To n_parents - 1
+        theUFSession.Obj.AskTypeAndSubtype(parents(ii), type, subtype)
+        Dim parentObj As TaggedObject = Utilities.NXObjectManager.Get(parents(ii))
 
-        workPart.RuleManager.DeleteDynamicRule("root:", ruleName);
+        If TypeOf parentObj Is NXOpen.Face Then
+            Dim dispObj As DisplayableObject = CType(parentObj, NXOpen.DisplayableObject)
+            dispObj.Highlight()
 
-        return (Face[])closeFaces.ToArray(typeof(Face));
-    }
+            Dim viewTag As NXOpen.Tag = theSession.Parts.Work.Views.WorkView.Tag
+            Dim myColor As UFObj.DispProps
+            myColor.color = 186
+            theUFSession.Disp.DisplayTemporaryPoint(viewTag, UFDisp.ViewType.UseCursor, _
+                basePoint, myColor, UFDisp.PolyMarker.Asterisk)
+                              
+            Dim msg As String = String.Format("Coordinates: {0}{1}Parent: {2} Type: {3} Subtype: {4} Layer: {5}",
+                pointObj.Coordinates.ToString, Environment.Newline, dispObj.ToString(), type, subtype, dispObj.Layer)
+            theUI.NXMessageBox.Show("Parent", NXMessageBox.DialogType.Information, msg)
+
+            dispObj.Unhighlight()
+        End If
+    Next
+        
+End Sub
+End Module
