@@ -347,3 +347,68 @@ public class NXJournal
         return System.Convert.ToInt32(Session.LibraryUnloadOption.Immediately);
     }
 }
+
+============================================================================================================================================================
+using System;
+using NXOpen;
+using NXOpenUI;
+using NXOpen.UF;
+
+public class Program
+{
+    static Session theSession = Session.GetSession();
+    static UFSession theUFSession = UFSession.GetUFSession();
+
+    public static void Main(string[] args)
+    {
+        Part wp = theSession.Parts.Work;
+        NXObject wkObj = SelectAnObject("Get Hostpointer");
+
+        Echo(wkObj.ToString());
+
+        string UF_ruleText;
+        theUFSession.Kf.AskRuleTextOfReferencingObject(wkObj.Tag, out UF_ruleText);
+        Echo("AskRuleTextOfReferencingObject : " + UF_ruleText);
+
+        string Common_ruleText1 = theSession.Parts.Work.RuleManager.GetReferenceText(wkObj);
+        Echo("GetReferenceText : " + Common_ruleText1);
+
+        string Common_ruleText2 = theSession.Parts.Work.RuleManager.GetObjectText(wkObj);
+        Echo("GetObjectText : " + Common_ruleText2);
+
+        // the above methods do not work with a datum axis which is part of a datum csys - see PR 2194111
+        // This is the work around:
+        String unique = null;
+        theUFSession.Cfi.GetUniqueFilename(out unique);
+        String rule = "%mqc_askHostpointerOfTag(" + wkObj.Tag.ToString() + ")";
+
+        theSession.Parts.Work.RuleManager.CreateDynamicRule("root:", unique, "Any", rule, "");
+        string theHP = theSession.Parts.Work.RuleManager.EvaluateAnyAsString("root:" + unique + ":");
+        theSession.Parts.Work.RuleManager.DeleteDynamicRule("root:", unique);
+        Echo(rule + " : " + theHP);
+
+    }
+
+    public static void Echo(string output)
+    {
+        theSession.ListingWindow.Open();
+        theSession.ListingWindow.WriteLine(output);
+        theSession.LogFile.WriteLine(output);
+    }
+
+    public static NXObject SelectAnObject(string prompt)
+    {
+        NXObject selobj = null;
+        Point3d cursor = default(Point3d);
+
+        Selection.Response resp = UI.GetUI().SelectionManager.SelectObject(prompt, "Select an object",
+            Selection.SelectionScope.AnyInAssembly, false, false, out selobj, out cursor);
+
+        return selobj;
+    }
+
+    public static int GetUnloadOption(string arg)
+    {
+        return System.Convert.ToInt32(Session.LibraryUnloadOption.Immediately);
+    }
+}
