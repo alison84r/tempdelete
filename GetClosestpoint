@@ -412,3 +412,237 @@ public class Program
         return System.Convert.ToInt32(Session.LibraryUnloadOption.Immediately);
     }
 }
+
+===================================================================================================================================================
+using System;
+using System.Collections.Generic;
+using NXOpen;
+using NXOpen.UF;
+
+/*
+If the point was created with snap point option "Point on Face" or "Point on Line" then the point is a smart object.
+The UFWrapper method UFSo.AskParents() will then return the Face(s) as parent objects.
+
+If the point is non-associative then the distance from the point to each body faces is measured.
+If the distance is less than a delta value (e.g. 0.0001) then the point is supposed to lie on that face(s).
+*/
+
+public class Program
+{
+    // class members
+    private static Session theSession;
+    private static UFSession theUfSession;
+    public static Program theProgram;
+    private static ListingWindow theLW;
+    private static UI theUI;
+    public static bool isDisposeCalled;
+
+    private const bool bShowLW = false; // set to true for debug outputs
+    private const double dDelta = 0.0001; // max. distance tolerance to face
+    private List<Face> faceList;
+    Part workPart;
+
+    // Constructor
+    public Program()
+    {
+        try
+        {
+            theSession = Session.GetSession();
+            theUfSession = UFSession.GetUFSession();
+            theLW = theSession.ListingWindow;
+            theUI = UI.GetUI();
+            isDisposeCalled = false;
+            faceList = new List<Face>();
+            workPart = theSession.Parts.Work;
+
+        }
+        catch (NXOpen.NXException ex)
+        {
+            UI.GetUI().NXMessageBox.Show("Message", NXMessageBox.DialogType.Error, ex.Message);
+        }
+    }
+
+    // do the job
+    public void do_it()
+    {
+        try
+        {
+            Point thePoint = default(Point); 
+            while (SelectPoint("Select Point", ref thePoint) == Selection.Response.Ok) 
+            {
+                faceList.Clear();
+
+                Echo("\nPoint: " + thePoint.ToString()); 
+                Echo(" Coordinates: " + thePoint.Coordinates.ToString());
+
+                if (! ReportSoParents(thePoint, ref faceList, 2 ) )
+                {
+                    Echo(" " + thePoint.ToString() + " is not smart. Measure Distance instead with tolerance " + dDelta.ToString());
+                    ReportCloseFaces(thePoint, ref faceList, 2);
+                }
+
+                // Highlight face(s) where point lies in
+                if (faceList.Count > 0)
+                {
+                    string sFaces = "Parent Faces:\n";
+                    for (int ii = 0; ii < faceList.Count; ii++)
+                    {
+                        faceList[ii].Highlight();
+                        sFaces += faceList[ii].ToString();
+                        sFaces += "\n";
+                    }
+                    theUI.NXMessageBox.Show("Face(s)", NXMessageBox.DialogType.Information, sFaces);
+
+                    for (int ii = 0; ii < faceList.Count; ii++)
+                        faceList[ii].Unhighlight();
+                }
+                else
+                    theUI.NXMessageBox.Show("Face(s)", NXMessageBox.DialogType.Information,
+                        "No Parent Face(s) found.");
+
+            } 
+        }
+        catch (NXOpen.NXException ex)
+        {
+            UI.GetUI().NXMessageBox.Show("Message", NXMessageBox.DialogType.Error, ex.ToString());
+        }
+    }
+
+    // report Smart Object Parents 
+    public bool ReportSoParents(TaggedObject theObj, ref List<Face> fList, int nLevel)
+    {
+        bool bIsSo;
+        theUfSession.So.IsSo(theObj.Tag, out bIsSo);
+        if (!bIsSo) return false;
+
+        Tag[] theParents = null;
+        int nParents = 0;
+        theUfSession.So.AskParents(theObj.Tag, 
+            UFConstants.UF_SO_ASK_ALL_PARENTS, 
+            out nParents, out theParents);
+
+        Echo(" Number of Parents = " + nParents);
+        if (nParents > 0)
+        {
+            for (int ii=0; ii<nParents; ii++)
+            {
+                TaggedObject theParentObj = 
+                    (TaggedObject)NXOpen.Utilities.NXObjectManager.Get(theParents[ii]);
+
+                Echo( new String(' ', nLevel) + "  Parent Object: " + theParentObj.ToString());
+                if ( theParentObj.GetType().Equals(typeof(Face)) )
+                {
+                    Face theFace = (Face) theParentObj;
+                    fList.Add(theFace);
+                }
+
+                ReportSoParents(theParentObj, ref fList, nLevel+1);
+            }
+        }
+        return (fList.Count > 0);
+    }
+
+    // report faces close to point within delta distance 
+    public bool ReportCloseFaces(NXObject theObj, ref List<Face> fList, int nLevel)
+    {
+        Point3d closePoint1, closePoint2;
+        double accuracy;
+        foreach (Body theBody in workPart.Bodies)
+        {
+            foreach (Face theFace in theBody.GetFaces())
+            {
+                double dist = theSession.Measurement.GetMinimumDistance(
+                    theObj, theFace, out closePoint1, out closePoint2, out accuracy);
+                Echo(new String(' ', nLevel) + " Distance to " + theFace.ToString() + " = " + dist);
+                if (dist < dDelta)
+                {
+                    faceList.Add(theFace);
+                }
+            }
+        }
+        return (fList.Count > 0);
+    }
+
+    // Selection
+    public static Selection.Response SelectPoint(string prompt, ref Point obj)
+    {
+        TaggedObject selobj;
+        Selection.MaskTriple[] mask = new Selection.MaskTriple[1];
+        {
+            mask[0].Type = UFConstants.UF_point_type;
+            mask[0].Subtype = 0;
+            mask[0].SolidBodySubtype = 0;
+        }
+        Point3d cursor = default(Point3d);
+
+        Selection.Response resp = theUI.SelectionManager.SelectTaggedObject(
+            prompt, prompt, Selection.SelectionScope.AnyInAssembly,
+            Selection.SelectionAction.ClearAndEnableSpecific,
+            false, false, mask, out selobj, out cursor);
+
+        if (resp == Selection.Response.ObjectSelected | resp == Selection.Response.ObjectSelectedByName)
+        {
+            obj = (Point)selobj;
+            return Selection.Response.Ok;
+        }
+        else
+        {
+            return Selection.Response.Cancel;
+        }
+    }
+
+    void Echo(string output)
+    {
+        if (bShowLW)
+        {
+            if (!theLW.IsOpen) theLW.Open();
+            theLW.WriteFullline(output);
+        }
+    }
+
+    //------------------------------------------------------------------------------
+    //  Explicit Activation
+    //      This entry point is used to activate the application explicitly
+    //------------------------------------------------------------------------------
+    public static int Main(string[] args)
+    {
+        int retValue = 0;
+        try
+        {
+            theProgram = new Program();
+            theProgram.do_it();
+            theProgram.Dispose();
+        }
+        catch (NXOpen.NXException ex)
+        {
+            UI.GetUI().NXMessageBox.Show("Message", NXMessageBox.DialogType.Error, ex.ToString());
+        }
+        return retValue;
+    }
+
+    //------------------------------------------------------------------------------
+    // Following method disposes all the class members
+    //------------------------------------------------------------------------------
+    public void Dispose()
+    {
+        try
+        {
+            if (isDisposeCalled == false)
+            {
+                faceList.Clear();
+            }
+            isDisposeCalled = true;
+        }
+        catch (NXOpen.NXException ex)
+        {
+            UI.GetUI().NXMessageBox.Show("Message", NXMessageBox.DialogType.Error, ex.ToString());
+        }
+    }
+
+    public static int GetUnloadOption(string arg)
+    {
+        //Unloads the image when the NX session terminates
+        return System.Convert.ToInt32(Session.LibraryUnloadOption.Immediately);
+    }
+
+}
