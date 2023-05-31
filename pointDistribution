@@ -41,14 +41,33 @@ public List<Point> GetPoints(List<Point> points, double width, double distance, 
             // Therefore, halve the total number of points for the calculations.
             int halfNumberOfPoints = numberOfPoints / 2;
 
-            var leftPoints = points.Where(p => p.Tag <= 0 && p.Tag >= -halfNumberOfPoints).OrderBy(p => p.Tag).ToList();
-            var rightPoints = points.Where(p => p.Tag >= 0 && p.Tag <= halfNumberOfPoints).OrderBy(p => p.Tag).ToList();
+            // Separate the points into left and right lists and sort them.
+            var leftPoints = points.Where(p => p.Tag <= 0).OrderBy(p => p.Tag).ToList();
+            var rightPoints = points.Where(p => p.Tag >= 0).OrderBy(p => p.Tag).ToList();
 
-            result.AddRange(leftPoints);
-            result.AddRange(rightPoints);
+            // Determine the maximum number of points that can be taken from both sides.
+            int leftMax = Math.Min(leftPoints.Count, halfNumberOfPoints);
+            int rightMax = Math.Min(rightPoints.Count, halfNumberOfPoints);
+
+            // If there are less left points than half of the total number of points,
+            // try to take more points from the right side, if they are available.
+            if (leftMax < halfNumberOfPoints)
+            {
+                rightMax = Math.Min(rightPoints.Count, numberOfPoints - leftMax);
+            }
+            // If there are less right points than half of the total number of points,
+            // try to take more points from the left side, if they are available.
+            else if (rightMax < halfNumberOfPoints)
+            {
+                leftMax = Math.Min(leftPoints.Count, numberOfPoints - rightMax);
+            }
+
+            // Add the determined number of points from both sides to the result list.
+            result.AddRange(leftPoints.GetRange(0, leftMax));
+            result.AddRange(rightPoints.GetRange(0, rightMax));
             break;
     }
 
-    // Return the result list of points
+    // Return the result list of points.
     return result;
 }
