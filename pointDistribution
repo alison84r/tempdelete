@@ -1,73 +1,69 @@
-public class Point
-{
-    public double X { get; set; }
-    public double Y { get; set; }
-    public double Z { get; set; }
-    public int Tag { get; set; }
-
-    public Point(double x, double y, double z, int tag)
-    {
-        X = x;
-        Y = y;
-        Z = z;
-        Tag = tag;
-    }
-}
-
-public enum PointDistribution
-{
-    OnlyLeft,
-    OnlyRight,
-    Bilateral
-}
-
 public List<Point> GetPoints(List<Point> points, double width, double distance, PointDistribution distribution)
 {
+    // Check if distance is a valid input
     if (distance <= 0)
     {
         throw new ArgumentException("Distance must be greater than 0");
     }
 
-    int numberOfPoints = (int)(width / distance); // Maximum number of points
+    // Calculate the maximum number of points that can fit within the given width
+    int numberOfPoints = (int)(width / distance);
+
+    // Prepare the result list
     List<Point> result = new List<Point>();
 
-    var pivotPoint = points.Find(p => p.Tag == 0); // Find the pivot point
+    // Find the pivot point, which is identified by the tag of 0
+    var pivotPoint = points.Find(p => p.Tag == 0);
+
+    // Check if a pivot point was found
     if (pivotPoint == null)
     {
         throw new Exception("No pivot point found (tag = 0)");
     }
 
+    // Determine how to distribute the points based on the given distribution enum
     switch (distribution)
     {
         case PointDistribution.OnlyLeft:
+            // If only left points are needed, filter the points to get only the ones with tags from 0 to -numberOfPoints.
+            // Then sort them in ascending order by their tags.
             result = points.Where(p => p.Tag <= 0 && p.Tag >= -numberOfPoints).OrderBy(p => p.Tag).ToList();
             break;
 
         case PointDistribution.OnlyRight:
+            // If only right points are needed, filter the points to get only the ones with tags from 0 to numberOfPoints.
+            // Then sort them in ascending order by their tags.
             result = points.Where(p => p.Tag >= 0 && p.Tag <= numberOfPoints).OrderBy(p => p.Tag).ToList();
             break;
 
         case PointDistribution.Bilateral:
+            // If points are needed from both sides, first separate the points into left and right lists and sort them.
             var leftPoints = points.Where(p => p.Tag <= 0).OrderBy(p => p.Tag).ToList();
             var rightPoints = points.Where(p => p.Tag >= 0).OrderBy(p => p.Tag).ToList();
 
+            // Determine the maximum number of points that can be taken from both sides
             int leftMax = Math.Min(leftPoints.Count, numberOfPoints / 2);
             int rightMax = Math.Min(rightPoints.Count, numberOfPoints / 2);
 
-            // Adjust for imbalance
+            // If there are less left points than half of the total number of points,
+            // try to take more points from the right side, if they are available.
             if (leftMax < numberOfPoints / 2)
             {
                 rightMax = Math.Min(rightPoints.Count, numberOfPoints - leftMax);
             }
+            // If there are less right points than half of the total number of points,
+            // try to take more points from the left side, if they are available.
             else if (rightMax < numberOfPoints / 2)
             {
                 leftMax = Math.Min(leftPoints.Count, numberOfPoints - rightMax);
             }
 
+            // Add the determined number of points from both sides to the result list
             result.AddRange(leftPoints.GetRange(0, leftMax));
             result.AddRange(rightPoints.GetRange(0, rightMax));
             break;
     }
 
+    // Return the result list of points
     return result;
 }
