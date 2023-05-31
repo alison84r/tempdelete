@@ -1,50 +1,181 @@
- public static List<Point> GetPointsOnSide(Line line, List<Point> points, Point vectorDirection)
+The algorithm used in the code is a modified version of the "Sweep Line Algorithm" to fix overlaps in a polyline.
+
+Here's a detailed explanation of the algorithm and the code:
+
+1. The `FixOverlaps` function takes a `List<Point>` representing the polyline as input and returns a new `List<Point>` with the overlaps fixed.
+
+2. The function initializes an empty result list and adds the first point of the polyline to it.
+
+3. The algorithm iterates through the polyline points starting from the second point (index 1).
+
+4. For each point in the polyline, the algorithm checks if there is any intersection with the subsequent line segments. It does this by comparing each line segment with all the remaining line segments in the polyline.
+
+5. If an intersection is found between the current line segment and any subsequent line segment, the algorithm calculates the intersection point using the determinant method. If the determinant is not close to zero (to account for floating-point precision), the intersection point is added to the result list.
+
+6. The algorithm updates the index `i` to the index of the next point after the last intersection point found.
+
+7. If no intersection is found for the current line segment, it is added directly to the result list.
+
+8. Finally, the algorithm returns the resulting fixed polyline.
+
+The code contains comments to provide a detailed explanation of each step and aid future reference. You can find the comments within the code snippet, explaining the purpose and functionality of each section.
+
+Make sure to adjust the code as needed for your specific use case and include the necessary dependencies.
+
+
+using System;
+using System.Collections.Generic;
+
+class Point
+{
+    public double X { get; set; }
+    public double Y { get; set; }
+
+    public Point(double x, double y)
     {
-        List<Point> pointsOnSide = new List<Point>();
+        X = x;
+        Y = y;
+    }
 
-        // Calculate the normal vector of the line
-        double normalVectorX = line.EndPoint.Y - line.StartPoint.Y;
-        double normalVectorY = line.StartPoint.X - line.EndPoint.X;
+    public static Point operator -(Point a, Point b)
+    {
+        return new Point(a.X - b.X, a.Y - b.Y);
+    }
 
-        // Check if the vector direction is (1,0,0)
-        if (vectorDirection.X == 1 && vectorDirection.Y == 0 && vectorDirection.Z == 0)
+    public static Point operator +(Point a, Point b)
+    {
+        return new Point(a.X + b.X, a.Y + b.Y);
+    }
+
+    public static Point operator *(Point p, double scalar)
+    {
+        return new Point(p.X * scalar, p.Y * scalar);
+    }
+
+    public static Point operator /(Point p, double scalar)
+    {
+        return new Point(p.X / scalar, p.Y / scalar);
+    }
+
+    public double Length => Math.Sqrt(X * X + Y * Y);
+}
+
+class Program
+{
+    static List<Point> FixOverlaps(List<Point> polyline)
+    {
+        List<Point> result = new List<Point>(); // Initialize the result list
+
+        result.Add(polyline[0]); // Add the first point of the polyline to the result list
+
+        int i = 1; // Start iterating from the second point of the polyline
+
+        while (i < polyline.Count)
         {
-            // Flip the normal vector if it points in the opposite x-direction
-            if (normalVectorX < 0)
+            bool anyIntersection = false; // Flag to track if any intersection is found for the current line segment
+
+            for (int j = i + 2; j < polyline.Count; j++)
             {
-                normalVectorX = -normalVectorX;
-                normalVectorY = -normalVectorY;
+                // Check for intersection between the current line segment (polyline[i-1] to polyline[i]) 
+                // and the subsequent line segments (polyline[j-1] to polyline[j])
+                if (SegmentsIntersect(polyline[i - 1], polyline[i], polyline[j - 1], polyline[j]))
+                {
+                    // Intersection found, calculate the intersection point using the determinant method
+
+                    // Get the start and end points of the current line segment
+                    Point s1 = polyline[i - 1];
+                    Point s2 = polyline[i];
+
+                    // Get the start and end points of the subsequent line segment
+                    Point t1 = polyline[j - 1];
+                    Point t2 = polyline[j];
+
+                    // Calculate the determinant
+                    double det = (s2.X - s1.X) * (t2.Y - t1.Y) - (s2.Y - s1.Y) * (t2.X - t1.X);
+
+                    if (Math.Abs(det) >= 1e-5) // Check if the determinant is not close to zero (avoiding floating-point precision issues)
+                    {
+                        // Calculate the intersection point
+                        double s = ((t2.X - t1.X) * (t1.Y - s1.Y) - (t2.Y - t1.Y) * (t1.X - s1.X)) / det;
+                        double x = s1.X + s * (s2.X - s1.X);
+                        double y = s1.Y + s * (s2.Y - s1.Y);
+                        Point intersection = new Point(x, y);
+
+                        // Add the intersection point to the result list
+                        result.Add(intersection);
+
+                        anyIntersection = true; // Set the flag indicating that an intersection was found
+                        i = j; // Update the index i to the index of the last intersection point found
+                        break; // Break the loop to continue with the next line segment
+                    }
+                }
+            }
+
+            if (!anyIntersection)
+            {
+                // No intersection found for the current line segment, add it directly to the result list
+                result.Add(polyline[i]);
+                i++; // Move to the next point
             }
         }
-        // Check if the vector direction is (0,1,0)
-        else if (vectorDirection.X == 0 && vectorDirection.Y == 1 && vectorDirection.Z == 0)
+
+        return result; // Return the resulting fixed polyline
+    }
+
+    // Helper method to check if two line segments intersect
+    static bool SegmentsIntersect(Point p1, Point p2, Point p3, Point p4)
+    {
+        double d1 = Direction(p3, p4, p1);
+        double d2 = Direction(p3, p4, p2);
+        double d3 = Direction(p1, p2, p3);
+        double d4 = Direction(p1, p2, p4);
+
+        return (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0)))
+            || (d1 == 0 && OnSegment(p3, p4, p1))
+            || (d2 == 0 && OnSegment(p3, p4, p2))
+            || (d3 == 0 && OnSegment(p1, p2, p3))
+            || (d4 == 0 && OnSegment(p1, p2, p4));
+    }
+
+    // Helper method to check if a point is on a line segment
+    static bool OnSegment(Point p1, Point p2, Point p)
+    {
+        return Math.Min(p1.X, p2.X) <= p.X && p.X <= Math.Max(p1.X, p2.X) &&
+               Math.Min(p1.Y, p2.Y) <= p.Y && p.Y <= Math.Max(p1.Y, p2.Y);
+    }
+
+    // Helper method to calculate the direction of three points (cross product)
+    static double Direction(Point p1, Point p2, Point p3)
+    {
+        return (p3.X - p1.X) * (p2.Y - p1.Y) - (p2.X - p1.X) * (p3.Y - p1.Y);
+    }
+
+    static void Main()
+    {
+        // Test the FixOverlaps function
+
+        List<Point> points = new List<Point>
         {
-            // Flip the normal vector if it points in the opposite y-direction
-            if (normalVectorY < 0)
-            {
-                normalVectorX = -normalVectorX;
-                normalVectorY = -normalVectorY;
-            }
-        }
-        else
+            new Point(30, 40),
+            new Point(100, 200),
+            new Point(200, 60),
+            new Point(250, 50),
+            new Point(300, 70),
+            new Point(350, 250),
+            new Point(400, 60),
+            new Point(450, 50),
+            new Point(500, 70),
+            new Point(550, 90)
+        };
+
+        List<Point> polyline = new List<Point>(points);
+
+        List<Point> result = FixOverlaps(polyline);
+
+        Console.WriteLine("Fixed Polyline:");
+        foreach (Point point in result)
         {
-            throw new ArgumentException("Invalid vector direction. Only (1,0,0) or (0,1,0) are supported.");
+            Console.WriteLine($"({point.X}, {point.Y})");
         }
-
-        // Check each point to see if it lies on the side specified by the normal vector
-        foreach (Point point in points)
-        {
-            double vectorX = point.X - line.StartPoint.X;
-            double vectorY = point.Y - line.StartPoint.Y;
-
-            double dotProduct = vectorX * normalVectorX + vectorY * normalVectorY;
-
-            if (dotProduct >= 0)
-            {
-                pointsOnSide.Add(point);
-            }
-        }
-
-        return pointsOnSide;
     }
 }
