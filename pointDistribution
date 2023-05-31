@@ -25,15 +25,15 @@ public List<Point> GetPoints(List<Point> points, double width, double distance, 
     switch (distribution)
     {
         case PointDistribution.OnlyLeft:
-            // If only left points are needed, filter the points to get only the ones with tags from 0 to -numberOfPoints.
+            // If only left points are needed, filter the points to get only the ones with tags from 0 to -numberOfPoints+1.
             // Then sort them in ascending order by their tags.
-            result = points.Where(p => p.Tag <= 0 && p.Tag >= -numberOfPoints).OrderBy(p => p.Tag).ToList();
+            result = points.Where(p => p.Tag <= 0 && p.Tag > -numberOfPoints).OrderBy(p => p.Tag).ToList();
             break;
 
         case PointDistribution.OnlyRight:
-            // If only right points are needed, filter the points to get only the ones with tags from 0 to numberOfPoints.
+            // If only right points are needed, filter the points to get only the ones with tags from 0 to numberOfPoints-1.
             // Then sort them in ascending order by their tags.
-            result = points.Where(p => p.Tag >= 0 && p.Tag <= numberOfPoints).OrderBy(p => p.Tag).ToList();
+            result = points.Where(p => p.Tag >= 0 && p.Tag < numberOfPoints).OrderBy(p => p.Tag).ToList();
             break;
 
         case PointDistribution.Bilateral:
@@ -42,24 +42,25 @@ public List<Point> GetPoints(List<Point> points, double width, double distance, 
             int halfNumberOfPoints = numberOfPoints / 2;
 
             // Separate the points into left and right lists and sort them.
-            var leftPoints = points.Where(p => p.Tag <= 0).OrderBy(p => p.Tag).ToList();
-            var rightPoints = points.Where(p => p.Tag >= 0).OrderBy(p => p.Tag).ToList();
+            // For the left side, don't include the pivot in the list.
+            var leftPoints = points.Where(p => p.Tag < 0 && p.Tag > -halfNumberOfPoints).OrderBy(p => p.Tag).ToList();
+            // For the right side, include the pivot in the list.
+            var rightPoints = points.Where(p => p.Tag >= 0 && p.Tag < halfNumberOfPoints).OrderBy(p => p.Tag).ToList();
 
             // Determine the maximum number of points that can be taken from both sides.
             int leftMax = Math.Min(leftPoints.Count, halfNumberOfPoints);
             int rightMax = Math.Min(rightPoints.Count, halfNumberOfPoints);
 
-            // If there are less left points than half of the total number of points,
-            // try to take more points from the right side, if they are available.
-            if (leftMax < halfNumberOfPoints)
+            // Calculate total width that will be covered by the selected points
+            double totalWidth = (leftMax + rightMax) * distance;
+
+            // If the total width is more than the input width, decrease the number of points from the side with more points
+            if (totalWidth > width)
             {
-                rightMax = Math.Min(rightPoints.Count, numberOfPoints - leftMax);
-            }
-            // If there are less right points than half of the total number of points,
-            // try to take more points from the left side, if they are available.
-            else if (rightMax < halfNumberOfPoints)
-            {
-                leftMax = Math.Min(leftPoints.Count, numberOfPoints - rightMax);
+                if (leftMax > rightMax)
+                    leftMax--;
+                else
+                    rightMax--;
             }
 
             // Add the determined number of points from both sides to the result list.
