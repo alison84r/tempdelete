@@ -1,74 +1,50 @@
-public List<Point> GetPoints(List<Point> points, double width, double distance, PointDistribution distribution)
-{
-    // Check if distance is a valid input
-    if (distance <= 0)
+ public static List<Point> GetPointsOnSide(Line line, List<Point> points, Point vectorDirection)
     {
-        throw new ArgumentException("Distance must be greater than 0");
-    }
+        List<Point> pointsOnSide = new List<Point>();
 
-    // Calculate the maximum number of points that can fit within the given width
-    int numberOfPoints = (int)(width / distance);
+        // Calculate the normal vector of the line
+        double normalVectorX = line.EndPoint.Y - line.StartPoint.Y;
+        double normalVectorY = line.StartPoint.X - line.EndPoint.X;
 
-    // Prepare the result list
-    List<Point> result = new List<Point>();
-
-    // Find the pivot point, which is identified by the tag of 0
-    var pivotPoint = points.Find(p => p.Tag == 0);
-
-    // Check if a pivot point was found
-    if (pivotPoint == null)
-    {
-        throw new Exception("No pivot point found (tag = 0)");
-    }
-
-    // Determine how to distribute the points based on the given distribution enum
-    switch (distribution)
-    {
-        case PointDistribution.OnlyLeft:
-            // If only left points are needed, filter the points to get only the ones with tags from 0 to -numberOfPoints+1.
-            // Then sort them in ascending order by their tags.
-            result = points.Where(p => p.Tag <= 0 && p.Tag > -numberOfPoints).OrderBy(p => p.Tag).ToList();
-            break;
-
-        case PointDistribution.OnlyRight:
-            // If only right points are needed, filter the points to get only the ones with tags from 0 to numberOfPoints-1.
-            // Then sort them in ascending order by their tags.
-            result = points.Where(p => p.Tag >= 0 && p.Tag < numberOfPoints).OrderBy(p => p.Tag).ToList();
-            break;
-
-        case PointDistribution.Bilateral:
-            // For bilateral distribution, the number of points is divided equally across both sides.
-            // Therefore, halve the total number of points for the calculations.
-            int halfNumberOfPoints = numberOfPoints / 2;
-
-            // Separate the points into left and right lists and sort them.
-            // For the left side, don't include the pivot in the list.
-            var leftPoints = points.Where(p => p.Tag < 0 && p.Tag > -halfNumberOfPoints).OrderBy(p => p.Tag).ToList();
-            // For the right side, include the pivot in the list.
-            var rightPoints = points.Where(p => p.Tag >= 0 && p.Tag < halfNumberOfPoints).OrderBy(p => p.Tag).ToList();
-
-            // Determine the maximum number of points that can be taken from both sides.
-            int leftMax = Math.Min(leftPoints.Count, halfNumberOfPoints);
-            int rightMax = Math.Min(rightPoints.Count, halfNumberOfPoints);
-
-            // Calculate total width that will be covered by the selected points
-            double totalWidth = (leftMax + rightMax) * distance;
-
-            // If the total width is more than the input width, decrease the number of points from the side with more points
-            if (totalWidth > width)
+        // Check if the vector direction is (1,0,0)
+        if (vectorDirection.X == 1 && vectorDirection.Y == 0 && vectorDirection.Z == 0)
+        {
+            // Flip the normal vector if it points in the opposite x-direction
+            if (normalVectorX < 0)
             {
-                if (leftMax > rightMax)
-                    leftMax--;
-                else
-                    rightMax--;
+                normalVectorX = -normalVectorX;
+                normalVectorY = -normalVectorY;
             }
+        }
+        // Check if the vector direction is (0,1,0)
+        else if (vectorDirection.X == 0 && vectorDirection.Y == 1 && vectorDirection.Z == 0)
+        {
+            // Flip the normal vector if it points in the opposite y-direction
+            if (normalVectorY < 0)
+            {
+                normalVectorX = -normalVectorX;
+                normalVectorY = -normalVectorY;
+            }
+        }
+        else
+        {
+            throw new ArgumentException("Invalid vector direction. Only (1,0,0) or (0,1,0) are supported.");
+        }
 
-            // Add the determined number of points from both sides to the result list.
-            result.AddRange(leftPoints.GetRange(0, leftMax));
-            result.AddRange(rightPoints.GetRange(0, rightMax));
-            break;
+        // Check each point to see if it lies on the side specified by the normal vector
+        foreach (Point point in points)
+        {
+            double vectorX = point.X - line.StartPoint.X;
+            double vectorY = point.Y - line.StartPoint.Y;
+
+            double dotProduct = vectorX * normalVectorX + vectorY * normalVectorY;
+
+            if (dotProduct >= 0)
+            {
+                pointsOnSide.Add(point);
+            }
+        }
+
+        return pointsOnSide;
     }
-
-    // Return the result list of points.
-    return result;
 }
