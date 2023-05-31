@@ -37,30 +37,15 @@ public List<Point> GetPoints(List<Point> points, double width, double distance, 
             break;
 
         case PointDistribution.Bilateral:
-            // If points are needed from both sides, first separate the points into left and right lists and sort them.
-            var leftPoints = points.Where(p => p.Tag <= 0).OrderBy(p => p.Tag).ToList();
-            var rightPoints = points.Where(p => p.Tag >= 0).OrderBy(p => p.Tag).ToList();
+            // For bilateral distribution, the number of points is divided equally across both sides.
+            // Therefore, halve the total number of points for the calculations.
+            int halfNumberOfPoints = numberOfPoints / 2;
 
-            // Determine the maximum number of points that can be taken from both sides
-            int leftMax = Math.Min(leftPoints.Count, numberOfPoints / 2);
-            int rightMax = Math.Min(rightPoints.Count, numberOfPoints / 2);
+            var leftPoints = points.Where(p => p.Tag <= 0 && p.Tag >= -halfNumberOfPoints).OrderBy(p => p.Tag).ToList();
+            var rightPoints = points.Where(p => p.Tag >= 0 && p.Tag <= halfNumberOfPoints).OrderBy(p => p.Tag).ToList();
 
-            // If there are less left points than half of the total number of points,
-            // try to take more points from the right side, if they are available.
-            if (leftMax < numberOfPoints / 2)
-            {
-                rightMax = Math.Min(rightPoints.Count, numberOfPoints - leftMax);
-            }
-            // If there are less right points than half of the total number of points,
-            // try to take more points from the left side, if they are available.
-            else if (rightMax < numberOfPoints / 2)
-            {
-                leftMax = Math.Min(leftPoints.Count, numberOfPoints - rightMax);
-            }
-
-            // Add the determined number of points from both sides to the result list
-            result.AddRange(leftPoints.GetRange(0, leftMax));
-            result.AddRange(rightPoints.GetRange(0, rightMax));
+            result.AddRange(leftPoints);
+            result.AddRange(rightPoints);
             break;
     }
 
