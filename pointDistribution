@@ -1,0 +1,73 @@
+public class Point
+{
+    public double X { get; set; }
+    public double Y { get; set; }
+    public double Z { get; set; }
+    public int Tag { get; set; }
+
+    public Point(double x, double y, double z, int tag)
+    {
+        X = x;
+        Y = y;
+        Z = z;
+        Tag = tag;
+    }
+}
+
+public enum PointDistribution
+{
+    OnlyLeft,
+    OnlyRight,
+    Bilateral
+}
+
+public List<Point> GetPoints(List<Point> points, double width, double distance, PointDistribution distribution)
+{
+    if (distance <= 0)
+    {
+        throw new ArgumentException("Distance must be greater than 0");
+    }
+
+    int numberOfPoints = (int)(width / distance); // Maximum number of points
+    List<Point> result = new List<Point>();
+
+    var pivotPoint = points.Find(p => p.Tag == 0); // Find the pivot point
+    if (pivotPoint == null)
+    {
+        throw new Exception("No pivot point found (tag = 0)");
+    }
+
+    switch (distribution)
+    {
+        case PointDistribution.OnlyLeft:
+            result = points.Where(p => p.Tag <= 0 && p.Tag >= -numberOfPoints).OrderBy(p => p.Tag).ToList();
+            break;
+
+        case PointDistribution.OnlyRight:
+            result = points.Where(p => p.Tag >= 0 && p.Tag <= numberOfPoints).OrderBy(p => p.Tag).ToList();
+            break;
+
+        case PointDistribution.Bilateral:
+            var leftPoints = points.Where(p => p.Tag <= 0).OrderBy(p => p.Tag).ToList();
+            var rightPoints = points.Where(p => p.Tag >= 0).OrderBy(p => p.Tag).ToList();
+
+            int leftMax = Math.Min(leftPoints.Count, numberOfPoints / 2);
+            int rightMax = Math.Min(rightPoints.Count, numberOfPoints / 2);
+
+            // Adjust for imbalance
+            if (leftMax < numberOfPoints / 2)
+            {
+                rightMax = Math.Min(rightPoints.Count, numberOfPoints - leftMax);
+            }
+            else if (rightMax < numberOfPoints / 2)
+            {
+                leftMax = Math.Min(leftPoints.Count, numberOfPoints - rightMax);
+            }
+
+            result.AddRange(leftPoints.GetRange(0, leftMax));
+            result.AddRange(rightPoints.GetRange(0, rightMax));
+            break;
+    }
+
+    return result;
+}
