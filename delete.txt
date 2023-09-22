@@ -1,0 +1,211 @@
+'----------------------------------------------------------------------'
+' Title: Add/Update Drawing Parameters
+' Author: Naga Reddy (naga.reddy@piterion.com)
+' Date: 23-Sep-2023
+' Description: This script adds, updates, or removes parameters in a '
+'              CATIA Drawing document.
+'----------------------------------------------------------------------'
+
+Dim MODEUPDATE      As Boolean
+Public docActiveDrw As DrawingDocument
+Public Const sTitle As String = "Add/Update Drawing Parameters"
+
+' Constants for file paths for Production
+Const sWORK_DIR_EnvName = "WORK_DIR"
+Const sCADFilesFolderName = "Import"
+
+'----------------------------------------------------------------------'
+' Subroutine: CATMain
+' Description: Main entry point of the script. Iterates through files in the
+'              specified folder and processes drawing documents.
+'----------------------------------------------------------------------'
+Sub CATMain()
+    ' Turn off display alerts
+    CATIA.DisplayFileAlerts = False
+    
+    ' Define file paths
+    Dim sWORK_DIR As String
+    Dim sCADFilesPath As String
+    Dim oFSO As Object
+    Dim oInputFolder As Object
+    Dim oInputFile As Object
+    Dim sExtension As String
+    Dim sDocFilesPath As String
+    
+    ' Get the working directory
+    Set oFSO = CATIA.FileSystem
+    sWORK_DIR = CATIA.SystemService.Environ(sWORK_DIR_EnvName)
+    sCADFilesPath = oFSO.ConcatenatePaths(sWORK_DIR, sCADFilesFolderName)
+    'sCADFilesPath = "C:\\Users\\HP\\Downloads\\TempDelete\\bently"
+    ' Get the input folder and iterate through files
+    Set oInputFolder = oFSO.GetFolder(sCADFilesPath)
+    
+    For Each oInputFile In oInputFolder.Files
+        ' Get file extension
+        Set oVBAFso = CreateObject("Scripting.FileSystemObject")
+        sExtension = oVBAFso.GetExtensionName(oInputFile.Name)
+        
+        ' Check if it's a Drawing file
+        If InStr("CATDrawing", sExtension) <> 0 Then
+            sDocFilesPath = oFSO.ConcatenatePaths(sCADFilesPath, oInputFile.Name)
+            CATIA.Documents.Open (sDocFilesPath)
+            
+            ' Get the active drawing document
+            If TypeName(CATIA.ActiveDocument) = "DrawingDocument" Then
+                Set docActiveDrw = CATIA.ActiveDocument
+                
+                MODEUPDATE = False
+                
+                ' Get the parameters of the drawing document
+                Dim drwParameters As Parameters
+                Set drwParameters = docActiveDrw.Parameters
+        
+                ' Get the name of the active drawing document
+                Dim docActiveDrwName As String
+                docActiveDrwName = docActiveDrw.Name
+
+                ' Check if the name length is less than 70 characters
+                If (Len(docActiveDrwName) < 70) Then
+                    Exit Sub
+                End If
+                ' Perform either create/update or remove parameters based on MODEUPDATE flag
+                If MODEUPDATE Then
+                    Call CreateOrUpdateParameters(drwParameters, docActiveDrwName)
+                Else
+                    Call RemoveParameters(drwParameters)
+                End If
+                
+                ' Save the document
+                docActiveDrw.Save
+                
+                ' Close the document (if needed)
+                docActiveDrw.Close
+            Else
+                MsgBox "Active document is not recognized as a Drawing.", vbExclamation, "Add/Update Drawing Parameters"
+            End If
+        End If
+    Next
+    
+    ' Turn on display alerts
+    CATIA.DisplayFileAlerts = True
+End Sub
+
+'----------------------------------------------------------------------'
+' Subroutine: CreateOrUpdateParameters
+' Parameters:
+'   - parameters1: Parameters collection of the drawing document
+'   - partName: Name of the drawing document
+' Description: Extracts properties from the part name and creates or '
+'              updates corresponding parameters in the drawing '
+'              document.
+'----------------------------------------------------------------------'
+Sub CreateOrUpdateParameters(parameters1 As Parameters, partName As String)
+    ' Extract the properties
+    Dim KVSCODE, CADTYPE, PDA, VERSION, ALTERNATE, DESIGNATION, COMMENT, KVS_CADT_PDA_ALT
+    KVSCODE = Mid(partName, 1, 14)
+    CADTYPE = Mid(partName, 16, 3)
+    PDA = Mid(partName, 20, 3)
+    VERSION = Mid(partName, 24, 3)
+    ALTERNATE = Mid(partName, 28, 3)
+    DESIGNATION = Mid(partName, 32, 18)
+    COMMENT = Mid(partName, 51, 20)
+    KVS_CADT_PDA_ALT = KVSCODE & CADTYPE & PDA & ALTERNATE
+
+    ' Create or update parameters
+    CreateOrUpdateParameter parameters1, "KVSCODE", KVSCODE
+    CreateOrUpdateParameter parameters1, "CADTYPE", CADTYPE
+    CreateOrUpdateParameter parameters1, "PDA", PDA
+    CreateOrUpdateParameter parameters1, "VERSION", VERSION
+    CreateOrUpdateParameter parameters1, "ALTERNATE", ALTERNATE
+    CreateOrUpdateParameter parameters1, "DESIGNATION", DESIGNATION
+    CreateOrUpdateParameter parameters1, "COMMENT", COMMENT
+    CreateOrUpdateParameter parameters1, "KVS_CADT_PDA_ALT", KVS_CADT_PDA_ALT
+End Sub
+
+'----------------------------------------------------------------------'
+' Subroutine: RemoveParameters
+' Parameters:
+'   - parameters1: Parameters collection of the drawing document
+' Description: Removes specified parameters if they exist in the '
+'              drawing document.
+'----------------------------------------------------------------------'
+Sub RemoveParameters(parameters1 As Parameters)
+    ' Remove parameters if they exist
+    RemoveParameter parameters1, "KVSCODE"
+    RemoveParameter parameters1, "CADTYPE"
+    RemoveParameter parameters1, "PDA"
+    RemoveParameter parameters1, "VERSION"
+    RemoveParameter parameters1, "ALTERNATE"
+    RemoveParameter parameters1, "DESIGNATION"
+    RemoveParameter parameters1, "COMMENT"
+    RemoveParameter parameters1, "KVS_CADT_PDA_ALT"
+End Sub
+
+'----------------------------------------------------------------------'
+' Function: ParameterExist
+' Parameters:
+'   - ParameterCollection: Parameters collection to check
+'   - ParameterName: Name of the parameter to check for existence
+' Returns:
+'   - Boolean value indicating whether the parameter exists
+' Description: Checks if a parameter with the given name exists in the '
+'              specified Parameters collection.
+'----------------------------------------------------------------------'
+Function ParameterExist(ParameterCollection As Parameters, ParameterName As String) As Boolean
+    On Error Resume Next
+    Dim ExistingParam As Parameter
+    Set ExistingParam = ParameterCollection.Item(ParameterName)
+    If Err.Number = 0 Then
+        ParameterExist = True
+    Else
+        ParameterExist = False
+    End If
+    Err.Clear
+    On Error GoTo 0
+End Function
+
+'----------------------------------------------------------------------'
+' Subroutine: CreateOrUpdateParameter
+' Parameters:
+'   - ParameterCollection: Parameters collection to add/update parameter
+'   - ParameterName: Name of the parameter to add/update
+'   - ParameterValue: Value to set for the parameter
+' Description: Creates a new parameter or updates an existing one '
+'              with the specified name and value.
+'----------------------------------------------------------------------'
+Sub CreateOrUpdateParameter(ParameterCollection As Parameters, ParameterName As String, ParameterValue As Variant)
+    On Error Resume Next
+    If ParameterExist(ParameterCollection, ParameterName) Then
+        Dim ExistingParam As Parameter
+        Set ExistingParam = ParameterCollection.Item(ParameterName)
+        ExistingParam.Value = ParameterValue
+    Else
+        Dim NewParam As Parameter
+        Set NewParam = ParameterCollection.CreateString("", "")
+        NewParam.Rename ParameterName
+        NewParam.Value = ParameterValue
+    End If
+    On Error GoTo 0
+End Sub
+
+'----------------------------------------------------------------------'
+' Subroutine: RemoveParameter
+' Parameters:
+'   - ParameterCollection: Parameters collection to remove parameter
+'   - ParameterName: Name of the parameter to remove
+' Description: Removes the specified parameter if it exists in the '
+'              Parameters collection.
+'----------------------------------------------------------------------'
+Sub RemoveParameter(ParameterCollection As Parameters, ParameterName As String)
+    Dim selection1 As Selection
+    Set selection1 = CATIA.ActiveDocument.Selection
+
+    If ParameterExist(ParameterCollection, ParameterName) Then
+        selection1.Clear
+        selection1.Add ParameterCollection.Item(ParameterName)
+        selection1.Delete
+    Else
+        MsgBox "Parameter '" & ParameterName & "' does not exist.", vbInformation
+    End If
+End Sub
+
